@@ -1,20 +1,69 @@
-var express = require('express');
-var app = express();
+const express = require('express');
+const bodyParser = require('body-parser')
+const app = express();
+const cors = require('cors')
 require('express-ws')(app);
 
-app.use(function (req, res, next) {
-    console.log('middleware');
+let sockets = []
+
+function broadcast(message) {
+  console.log('broadcasting ...')
+  sockets.forEach( (socket) => {
+    console.log('sending ...')
+    socket.send(message)
+  })
+}
+
+import UserManager from './user_manager'
+let manager = new UserManager()
+
+app.use(cors())
+app.use( bodyParser.json() );
+
+app.use((req, res, next) => {
     req.testing = 'testing';
     return next();
 });
 
-app.get('/', function(req, res, next){
+app.post('/signin', (req, res) => {
+    console.log(`${req.body.screenName} is logging in`)
+    manager.login(req.body.screenName)
+    broadcast(JSON.stringify({action: 'login'}))
+    res.json({})
+})
+
+app.get('/users', (req, res) => {
+  res.json(manager.getAvailableUsers())
+})
+
+app.get('/', (req, res, next) => {
     console.log('get route', req.testing);
     res.end();
 });
 
-app.ws('/', function(ws, req) {
-    ws.on('message', function(msg) {
+app.ws('/chat', (ws, req) => {
+  sockets.push(ws)
+
+  console.log(sockets.length)
+  ws.on('message', (msg) => {
+    let data = JSON.parse(msg)
+
+    switch(data.action){
+      case('getUsers'):
+        let payload = {action: 'users', payload: manager.getAllUsers()}
+        ws.send(JSON.stringify(payload))
+      case('sendMessage'):
+      break
+      break;
+      default:
+        ws.send(`echo: ${msg}`)
+    }
+
+  })
+})
+
+app.ws('/', (ws, req) => {
+    ws.on('message', (msg) => {
         ws.send(`echo ${msg}`)
     });
     console.log('socket', req.testing);
